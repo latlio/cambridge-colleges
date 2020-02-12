@@ -1,0 +1,41 @@
+---
+title: "Visiting 31 Colleges"
+author: "Lathan Liou"
+date: "2/12/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rjson)
+library(readxl)
+library(googleway)
+
+distmat <- fromJSON(file= "/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-colleges/cambridge-colleges.json")
+distances <- distmat %>% as.data.frame()
+coords <- read_excel("/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-colleges/cambridge-colleges-coords.xlsx")
+```
+
+# The Motivation
+I remember when I was looking at the different colleges at Cambridge, I didn't really have a good idea of what each of them looked like, since there was no video that took a tour of all of them. So, I decided that I wanted to make a video where I visit each college and film a mini virtual tour around. But, it's not like the colleges are all close to one another. Some are quite far. So, I want to find the most efficient way to travel to all the colleges by foot/bike. 
+
+# Looking at the Spatial Distribution of Colleges
+The first type of data I want to get is the latitude and longitude data. I can use Google's Geocoding API, but I can only request one address at a time. That's too bad. Guess I'll have to do it manually and put the latitudes and longitudes in a spreadsheet. Note that you need an API key to be able to make query requests using this API.
+
+```{r}
+set_key("AIzaSyC43hGY_yp_oZqkZf7zGXeCu9ObmeSLi-s")
+
+google_map() %>%
+  add_circles(
+    data = coords, lon = "lon", lat = "lat")
+```
+So the form for the query request is 
+
+I'm using Google's Distance Matrix API.
+`maps.googleapis.com/maps/api/distancematrix/json?units=imperial&origins=[ORIGINS]&destinations=[DESTS]&key=[YOUR API KEY]&mode=bicycling`
+
+where you can specify your origin as either a string address, latitutde/longitude coordinates, or a place ID. 
+
+So, I go through the process of writing all of the colleges in my search query. I can specify multiple origins, and I'll put as my destination Christ's College, which is my own college. Once I have the full query, I can run it, and then save the results as a JSON file. 
+
