@@ -23,7 +23,7 @@ coords <- read_excel("/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-
 ```
 
 # The Motivation
-I remember when I was looking at the different colleges at Cambridge, I didn't really have a good idea of what each of them looked like, since there was no video that took a tour of all of them. So, I decided that I wanted to make a video where I visit each college and film a mini virtual tour around. But, it's not like the colleges are all close to one another. Some are quite far. So, I want to find the most efficient way to travel to all the colleges by foot/bike. 
+I remember when I was looking at the different colleges at Cambridge, I didn't really have a good idea of what each of them looked like, since there was no video that took a tour of all of them. So, I decided that I wanted to make a video where I visit each college and film a mini virtual tour around. But, it's not like the colleges are all close to one another. Some are quite far. So, I want to find the most efficient way to travel to all the colleges by foot/bike. There are 31 total colleges in Cambridge, and they're spread all across the city. You can roughly categorize their location as either being in the center of the city, on the hill, or by the river. 
 
 # Looking at the Spatial Distribution of Colleges
 The first type of data I want to get is the latitude and longitude data. I can use Google's Geocoding API, but I can only request one address at a time. That's too bad. Guess I'll have to do it manually and put the latitudes and longitudes in a spreadsheet. Note that you need an API key to be able to make query requests using this API. To plot, I'm enabling Google's Maps Static API. For anyone having issues, check out this thread for good debugging techniques when using Google APIs (https://github.com/dkahle/ggmap/issues/262)
@@ -46,15 +46,9 @@ $$e^{\frac{h(x)-h(y)}{T}}$$
 
 A \textbf{cooling schedule} defines how wide across the space the salesman can explore his paths as well as how many times he can explore paths. We start at high temperatures with a low number of iterations such that the salesman can consider many paths, even those that are not close to the global minimum at all. As we cool (temperature $\rightarrow 0$), our probability of staying at non-optimal paths also approaches $0$, since e's exponent is going towards negative infinity. However, at the best minimum path the salesman finds, our probability approaches 1 because $h(x)$ is close to $h(y)$ so e's exponent is going towards $0$. This is equivalent to the salesman locking in on what he thinks is the best path and not considering other paths. 
 
-## Obtain Distances From Data Alone
-To obtain a distance matrix, I'm using Google's Distance Matrix API. So the form for the query request is 
+## Obtain Most Efficient Path From Coordinate Data Alone
 
-`maps.googleapis.com/maps/api/distancematrix/json?units=imperial&origins=[ORIGINS]&destinations=[DESTS]&key=[YOUR API KEY]&mode=bicycling`
-
-where you can specify your origin as either a string address, latitutde/longitude coordinates, or a place ID. 
-
-So, I go through the process of writing all of the colleges in my search query. I can specify multiple origins, and I'll put as my destination Christ's College, which is my own college. Once I have the full query, I can run it, and then save the results as a JSON file. 
-
+So, here I present code for how to perform simulated annealing.
 ```{r}
 create_distance_matrix <- function(x) {
   d <- as.matrix(dist(x))
@@ -69,6 +63,37 @@ calculate_path_length <- function(d, path) {
   return(length)
 }
 
+perform_simulated_annealing <- function(path, tau, distance_matrix){
+  k <- 1
+  path.dist <- c()
+  n.tau <- seq(100, 10000, len = length(tau))
+  path_length <- calculate_path_length(distance_matrix, path)
+  for (i in 1:length(tau)){
+    for (j in 1:n.tau[i]){
+      swap <- sample(1:length(path), 2) #randomly select two points to swap
+      new.path <- path
+      #manually do the swap by switching the indices of the path
+      new.path[swap] <- path[c(swap[2], swap[1])] 
+      new_path_length <- calculate_path_length(distance_matrix, new.path)
+      #if we get a new path length that is smaller than the old path length, we save it
+      if (runif(1) < exp(path_length - new_path_length/tau[i])) {
+        path <- new.path 
+        new_path_length <- path_length 
+      }
+      path.dist[k] <- path_length
+      k <- k + 1
+    }
+  }
+}
+```
+
+I think it'd be interesting to see whether what the most efficient paths are per cluster vs the most efficient path across all the colleges. 
+```{r}
+PATH <- 1:31
+PATH_CENTER <- 1:17
+PATH_HILL <- 1:6
+PATH_RIVER <- 1:5
+
 distances <- create_distance_matrix(coords %>% select(lat, lon))
 distances_center <- create_distance_matrix(coords %>% filter(cat == "center") %>%
                                              select(lat, lon))
@@ -77,43 +102,46 @@ distances_river <- create_distance_matrix(coords %>% filter(cat == "river") %>%
 distances_hill <- create_distance_matrix(coords %>% filter(cat == "hill") %>%
                                            select(lat, lon))
 
-PATH_CENTER <- 1:17
-PATH_HILL <- 1:6
-PATH_RIVER <- 1:5
-
-init_path_river <- calculate_path_length(distances_river, PATH_RIVER)
-
 TAU <- c(1000,500,100,50,25,20,10,5,2,1,.1,.01,.001,.0001)
 
-#### FUNCTIONALIZE ####
-#number of iterations proportional to temperature
-k <- 1
-path.dist <- c()
-n.tau <- seq(100,10000, len=length(TAU))
-for (i in 1:length(TAU)) {
-  for (j in 1:n.tau[i]) {
-    swap <- sample(1:5,2) #randomly select two cities to swap
-    new.path <- PATH_RIVER
-    #manually do the swap by switching the indices of the path and saving it as new path
-    new.path[swap] <- PATH_RIVER[c(swap[2], swap[1])]  
-    #calculate the path length of this new path
-    iter_path <- calculate_path_length(distances_river, new.path)
-    #this is the ratio p(y)/p(x)
-    #if we happen to get a new path length that is smaller than the old path length, we save it
-    if (runif(1) < exp((init_path_river - iter_path)/TAU[i])) { #code in something stochastic
-      PATH_RIVER <- new.path
-      init_path_river <- iter_path
-    }
-    path.dist[k] <- init_path_river
-    k <- k + 1
-  }
-}
+perform_simulated_annealing(PATH, TAU, distances)
+perform_simulated_annealing(PATH_CENTER, TAU, distances_center)
+perform_simulated_annealing(PATH_HILL, TAU, distances_hill)
+perform_simulated_annealing(PATH_RIVER, TAU, distances_river)
+```
 
-# Plot simulated annealing progress
+If we wanted to see the progress of the simulated annealing algorithm, we can plot it. We also should plot it to see if the algorithm reached an adequate minimum
+```{r}
 plot(path.dist, type = "l")
+```
 
+Otherwise, let's plot the most efficient paths.
+```{r}
+# Generate plot
+center_coords <- coords %>%
+  filter(cat == "center")
+hill_coords <- coords %>%
+  filter(cat == "hill")
 river_coords <- coords %>%
   filter(cat == "river")
+
+for(i in 1:length(PATH_CENTER)){
+    collegemap <- collegemap + 
+    geom_segment(x = center_coords$lon[PATH_CENTER[i]], 
+               y = center_coords$lat[PATH_CENTER[i]], 
+               xend = center_coords$lon[PATH_CENTER[i+1]], 
+               yend = center_coords$lat[PATH_CENTER[i+1]],
+               colour = "red")
+}
+
+for(i in 1:length(PATH_HILL)){
+    collegemap <- collegemap + 
+    geom_segment(x = hill_coords$lon[PATH_HILL[i]], 
+               y = hill_coords$lat[PATH_HILL[i]], 
+               xend = hill_coords$lon[PATH_HILL[i+1]], 
+               yend = hill_coords$lat[PATH_HILL[i+1]],
+               colour = "green")
+}
 
 for(i in 1:length(PATH_RIVER)){
   collegemap <- collegemap + 
@@ -125,8 +153,23 @@ for(i in 1:length(PATH_RIVER)){
 }
 
 collegemap
-
 ```
 
+Ooh, so the center one doesn't look too great. For example, it missed that St. Catharine's and Corpus Christi are right next to each other and instead joined them on a consecutive path, which is sensible to humans. Other things that to note is that for example, I didn't specify in the model what I want my final destination to be. So for visiting the hill colleges, it might make sense that I'd want to end closer to where I live, which is in the city center. 
 
+## Using a Distance Matrix
+Let's see if we can try one more data-motivated method to obtain our most efficient path before we resort to good old-fashioned human eyeballing.
 
+To obtain a distance matrix, I'm using Google's Distance Matrix API. So the form for the query request is 
+
+`maps.googleapis.com/maps/api/distancematrix/json?units=imperial&origins=[ORIGINS]&destinations=[DESTS]&key=[YOUR API KEY]&mode=bicycling`
+
+where you can specify your origin as either a string address, latitutde/longitude coordinates, or a place ID. 
+
+So, I go through the process of writing all of the colleges in my search query. I can specify multiple origins, and I'll put as my destination Christ's College, which is my own college. Once I have the full query, I can run it, and then save the results as a JSON file. 
+
+```{r}
+distance_df <- as.data.frame(distmat)
+distance_df2 <- distance_df %>%
+  select(starts_with("rows.elements.duration.text"))
+```
