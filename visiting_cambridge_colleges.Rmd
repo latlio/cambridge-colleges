@@ -13,7 +13,7 @@ library(tidyverse)
 library(rjson)
 library(readxl)
 library(ggmap)
-library(ggforce)
+library(fs)
 
 register_google(key = "AIzaSyC43hGY_yp_oZqkZf7zGXeCu9ObmeSLi-s")
 
@@ -39,12 +39,12 @@ collegemap
 ```
 
 # Calculating Minimum Distance
-It seems that it might be worth tackling this challenge in clusters. So one way to approach this problem is to think about it like the Traveling Salesman Problem. Basically, it poses the question of how to find the most efficient route through various points. To solve this problem, we are using an algorithm called \textbf{simulated annealing}. The idea behind simulated annealing is that we choose a random path, and we change the path by switching two cities. If this new path has a shorter path length, then we keep it for sure. Otherwise, if the new path has a larger path length, we might end up keeping it anyway with some probability. This allows the salesman to take uphill steps in our minimization problem with some probability in the hopes that the salesman can discover more optimal minima. We obtain our random walk probability from the Metropolis Hastings result which we said was
+It seems that it might be worth tackling this challenge in clusters. So one way to approach this problem is to think about it like the Traveling Salesman Problem (TSP). Basically, it poses the question of how to find the most efficient route through various points. To solve this problem, we are using an algorithm called \textbf{simulated annealing}. The idea behind simulated annealing is that we choose a random path, and we change the path by switching two cities. If this new path has a shorter path length, then we keep it for sure. Otherwise, if the new path has a larger path length, we might end up keeping it anyway with some probability. This allows the salesman to take uphill steps in our minimization problem with some probability in the hopes that the salesman can discover more optimal minima. We obtain our random walk probability from the Metropolis Hastings result which we said was
 $$P(\text{take} \> y | \text{get} \> x) = \min \{ 1, \frac{f(y)}{f(x)} \}$$
 assuming we were sampling $g$ from a uniform. This probability is defined as
 $$e^{\frac{h(x)-h(y)}{T}}$$
 
-A \textbf{cooling schedule} defines how wide across the space the salesman can explore his paths as well as how many times he can explore paths. We start at high temperatures with a low number of iterations such that the salesman can consider many paths, even those that are not close to the global minimum at all. As we cool (temperature $\rightarrow 0$), our probability of staying at non-optimal paths also approaches $0$, since e's exponent is going towards negative infinity. However, at the best minimum path the salesman finds, our probability approaches 1 because $h(x)$ is close to $h(y)$ so e's exponent is going towards $0$. This is equivalent to the salesman locking in on what he thinks is the best path and not considering other paths. 
+A \textbf{cooling schedule} defines how wide across the space the salesman can explore his paths as well as how many times he can explore paths. We start at high temperatures with a low number of iterations such that the salesman can consider many paths, even those that are not close to the global minimum at all. As we cool (temperature $\rightarrow 0$), our probability of staying at non-optimal paths also approaches $0$, since e's exponent is going towards negative infinity. However, at the best minimum path the salesman finds, our probability approaches 1 because $h(x)$ is close to $h(y)$ so e's exponent is going towards $0$. This is equivalent to the salesman locking in on what he thinks is the best path and not considering other paths. Note that the solution to TSP is a cycle meaning that it doesn't matter where I start; the total path remains the same. 
 
 ## Obtain Most Efficient Path From Coordinate Data Alone
 
@@ -63,7 +63,8 @@ calculate_path_length <- function(d, path) {
   return(length)
 }
 
-perform_simulated_annealing <- function(path, tau, distance_matrix){
+perform_simulated_annealing <- function(path, tau, distance_matrix, seed){
+  set.seed(seed)
   k <- 1
   path.dist <- c()
   n.tau <- seq(100, 10000, len = length(tau))
@@ -90,9 +91,9 @@ perform_simulated_annealing <- function(path, tau, distance_matrix){
 I think it'd be interesting to see whether what the most efficient paths are per cluster vs the most efficient path across all the colleges. 
 ```{r}
 PATH <- 1:31
-PATH_CENTER <- 1:17
+PATH_CENTER <- 1:16
 PATH_HILL <- 1:6
-PATH_RIVER <- 1:5
+PATH_RIVER <- 1:6
 
 distances <- create_distance_matrix(coords %>% select(lat, lon))
 distances_center <- create_distance_matrix(coords %>% filter(cat == "center") %>%
@@ -104,10 +105,10 @@ distances_hill <- create_distance_matrix(coords %>% filter(cat == "hill") %>%
 
 TAU <- c(1000,500,100,50,25,20,10,5,2,1,.1,.01,.001,.0001)
 
-perform_simulated_annealing(PATH, TAU, distances)
-perform_simulated_annealing(PATH_CENTER, TAU, distances_center)
-perform_simulated_annealing(PATH_HILL, TAU, distances_hill)
-perform_simulated_annealing(PATH_RIVER, TAU, distances_river)
+perform_simulated_annealing(PATH, TAU, distances, 47)
+perform_simulated_annealing(PATH_CENTER, TAU, distances_center, 47)
+perform_simulated_annealing(PATH_HILL, TAU, distances_hill, 47)
+perform_simulated_annealing(PATH_RIVER, TAU, distances_river, 47)
 ```
 
 If we wanted to see the progress of the simulated annealing algorithm, we can plot it. We also should plot it to see if the algorithm reached an adequate minimum
@@ -157,6 +158,48 @@ collegemap
 
 Ooh, so the center one doesn't look too great. For example, it missed that St. Catharine's and Corpus Christi are right next to each other and instead joined them on a consecutive path, which is sensible to humans. Other things that to note is that for example, I didn't specify in the model what I want my final destination to be. So for visiting the hill colleges, it might make sense that I'd want to end closer to where I live, which is in the city center. 
 
+Maybe, if I initialized the path differently, it could perform better. So, I provided a path with some human input. I don't want to give the best human path because then the algorithm wouldn't learn anything, so I'm going to give it "hints". For instance, St. Catharine's and Corpus Christi should be consecutively travelled colleges, and that we generally want to move north to south.
+
+```{r}
+PATH_HILL2 <- c(1,2,5,6,3,4)
+PATH_CENTER2 <- c(14,15,6,16,8,13,3,11,9,10,5,4,1,7,12,2)
+PATH_RIVER2 <- c(4,1,2,3,5,6)
+
+perform_simulated_annealing(PATH_HILL2, TAU, distances_hill, 47)
+perform_simulated_annealing(PATH_CENTER2, TAU, distances_center, 47)
+perform_simulated_annealing(PATH_RIVER2, TAU, distances_river, 47)
+
+for(i in 1:length(PATH_RIVER2)){
+    collegemap <- collegemap + 
+    geom_segment(x = river_coords$lon[PATH_RIVER2[i]], 
+               y = river_coords$lat[PATH_RIVER2[i]], 
+               xend = river_coords$lon[PATH_RIVER2[i+1]], 
+               yend = river_coords$lat[PATH_RIVER2[i+1]],
+               colour = "purple")
+}
+
+for(i in 1:length(PATH_CENTER2)){
+    collegemap <- collegemap + 
+    geom_segment(x = center_coords$lon[PATH_CENTER2[i]], 
+               y = center_coords$lat[PATH_CENTER2[i]], 
+               xend = center_coords$lon[PATH_CENTER2[i+1]], 
+               yend = center_coords$lat[PATH_CENTER2[i+1]],
+               colour = "red")
+}
+
+for(i in 1:length(PATH_HILL2)){
+    collegemap <- collegemap + 
+    geom_segment(x = hill_coords$lon[PATH_HILL2[i]], 
+               y = hill_coords$lat[PATH_HILL2[i]], 
+               xend = hill_coords$lon[PATH_HILL2[i+1]], 
+               yend = hill_coords$lat[PATH_HILL2[i+1]],
+               colour = "green")
+}
+collegemap
+```
+
+Hmm, it's better than before, but still probably not the most ideal path.
+
 ## Using a Distance Matrix
 Let's see if we can try one more data-motivated method to obtain our most efficient path before we resort to good old-fashioned human eyeballing.
 
@@ -166,10 +209,40 @@ To obtain a distance matrix, I'm using Google's Distance Matrix API. So the form
 
 where you can specify your origin as either a string address, latitutde/longitude coordinates, or a place ID. 
 
-So, I go through the process of writing all of the colleges in my search query. I can specify multiple origins, and I'll put as my destination Christ's College, which is my own college. Once I have the full query, I can run it, and then save the results as a JSON file. 
+So, I go through the process of writing all of the colleges in my search query. I can specify multiple origins, and I'll put as my destination Christ's College, which is my own college. Once I have the full query, I can run it, and then save the results as a JSON file.
+
+Ideally, I'd love to put all 31 colleges as my origin and destination to get a 17x17 distance matrix, but that would exceed my API query limit. 
+
+So, I'll have to do each pair of colleges one by one and construct the matrix row by row.
 
 ```{r}
-distance_df <- as.data.frame(distmat)
-distance_df2 <- distance_df %>%
-  select(starts_with("rows.elements.duration.text"))
+#try with one row first 
+christs <- fromJSON(file= "/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-colleges/christs.json")
+christs <- christs %>% 
+  as.data.frame()
+christs <- christs %>%
+  select(starts_with("rows.elements.duration.text")) %>%
+  distinct()
+names(christs) <- center_coords$name
+```
+
+```{r}
+#read all json files
+college_files <- fs::dir_ls(path = "/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-colleges/", glob = "*.json")
+college_files <- college_files[-1]
+college_files <- as.vector(college_files)
+
+df_to_row <- function(df){
+  df %>%
+    as.data.frame() %>%
+    select(starts_with("rows.elements.duration.text")) %>%
+    distinct()
+}
+
+#read all json files into list
+college_mat <- college_files %>%
+  purrr::map(~fromJSON(file = .)) %>%
+  purrr::map(~df_to_row(.)) %>%
+  reduce(bind_rows)
+names(college_mat) <- center_coords$name
 ```
