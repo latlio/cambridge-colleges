@@ -1,4 +1,4 @@
-# Project Title
+# Visiting All 31 Cambridge Colleges
 
 The motivation for this project was to find the most efficient path to visit all 31 colleges in Cambridge for a YouTube video. I treated this like a Traveling Salesman Problem and used simulated annealing to find the most shortest tour for various clusters of Cambridge colleges (center, river, hill). I implement the naive way of using iterative swaps between adjacent points to determine shortest path (i.e. if a swap produces a shorter path, keep the new path, otherwise, randomize and repeat). Assumptions: straight line paths, coordinates represent college entrances, and Euclidean distance.
 
