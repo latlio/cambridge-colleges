@@ -15,7 +15,7 @@ library(readxl)
 library(ggmap)
 library(fs)
 
-register_google(key = "AIzaSyC43hGY_yp_oZqkZf7zGXeCu9ObmeSLi-s")
+register_google(key = )
 
 distmat <- fromJSON(file= "/Users/lathanliou/Desktop/Academic/DataProjects/cambridge-colleges/cambridge-colleges.json")
 distances <- distmat %>% as.data.frame()
